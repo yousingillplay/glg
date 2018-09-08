@@ -54,6 +54,28 @@ create global temporary table genealogy_data_groups
 )
 on commit preserve rows;
 
+create global temporary table gtt_lpt_equip_data
+(
+  lot varchar2(7),
+  logpoint number,
+  operation number,
+  transaction varchar2(3),
+  tran_dttm date,
+  login_dttm date,
+  equipment varchar2(20),
+  sequence number
+)
+on commit preserve rows;
+
+create global temporary table gtt_lpt_opn_sequence
+(
+  id raw(16),
+  logpoint number,
+  operation number,
+  sequence number
+)
+on commit preserve rows;
+
 create table glg_monitor
 (
   start_sequence number,
