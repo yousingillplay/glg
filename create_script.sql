@@ -76,6 +76,30 @@ create global temporary table gtt_lpt_opn_sequence
 )
 on commit preserve rows;
 
+create global temporary table gtt_lpt_equip_data_out
+(
+  id raw(16),
+  grouping_id number,
+  lpt_opn_seq_id raw(16),
+  lot varchar2(7),
+  logpoint number,
+  operation number,
+  transaction varchar2(3),
+  tran_dttm date,
+  login_dttm date,
+  equipment varchar2(20),
+  sequence number,
+  parent_id raw(16)
+)
+on commit preserve rows;
+
+create global temporary table gtt_lpt_equip_parents
+(
+  id raw(16),
+  parent_id raw(16)
+)
+on commit preserve rows;
+
 create table glg_monitor
 (
   start_sequence number,

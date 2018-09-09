@@ -1,6 +1,19 @@
 create or replace package body p_glg_data
 as
   /****************************************************************************/
+  function boolean_to_char
+  (
+    i_boolean in boolean
+  )
+  return varchar2
+  as
+    r_retval varchar2(20);
+  begin
+    r_retval := case when i_boolean then 'true' else 'false' end;
+    return r_retval;
+  end boolean_to_char;
+
+  /****************************************************************************/
   procedure add_seq
   as
     i_seq number := 1;
@@ -52,6 +65,8 @@ as
     execute immediate 'truncate table genealogy_data_groups';
     execute immediate 'truncate table glg_monitor';
     execute immediate 'truncate table gtt_lpt_opn_sequence';
+    execute immediate 'truncate table gtt_lpt_equip_data_out';
+    execute immediate 'truncate table gtt_lpt_equip_parents';
     
   end clear_temp_tables;
   
@@ -296,7 +311,6 @@ as
       
       r_retval := l_start_sequence +
                   ((l_end_sequence - l_start_sequence) / 2);
-      dbms_output.put_line('entered with sequence ' || r_retval);
     end if;
     
     return r_retval;
@@ -319,8 +333,10 @@ as
 
     l_sequence := get_lpt_opn_sequence(i_append, i_insert_after_id);
     
+    dbms_output.put_line('        inserting sequence on append ' || boolean_to_char(i_append) || ' insert_after_id ' || i_insert_after_id);
+    
     insert into gtt_lpt_opn_sequence
-    values(sys_guid, i_logpoint, i_operation, l_sequence);
+    values(l_id, i_logpoint, i_operation, l_sequence);
     
     o_next_id := l_id;
     o_next_sequence := l_sequence;
@@ -335,7 +351,8 @@ as
     i_operation in number,
     o_next_id in out raw,
     o_next_sequence in out number,
-    o_found in out boolean
+    o_found in out boolean,
+    o_curr_lpt_opn_seq_id out raw
   )
   as
     cursor curr_lpt_opn_seq is
@@ -349,23 +366,15 @@ as
     
     l_found_num number;
   begin
-    if o_found = true
-    then
-      l_found_num := 1;
-    else
-      l_found_num := 0;
-    end if;
-    
-    dbms_output.put_line('checking logpoint ' || i_logpoint || ' operation ' || i_operation || ' o_found ' || l_found_num || ' id ' || o_next_id || ' sequence ' || o_next_sequence);
     
     for rec in curr_lpt_opn_seq
     loop
-      dbms_output.put_line('inside now logpoint ' || rec.logpoint || ' operation ' || rec.operation);
+      dbms_output.put_line('      checking seq on lpt ' || rec.logpoint || ' opn ' || rec.operation || ' seq ' || rec.sequence);
       if o_found = true
          and not (rec.logpoint = i_logpoint
                   and rec.operation = i_operation)
       then
-        dbms_output.put_line('entered on logpoint ' || i_logpoint);
+        dbms_output.put_line('        o_found = true and not equal lptopn');
         insert_lpt_opn_sequence
         (
           i_logpoint,
@@ -378,6 +387,7 @@ as
         
         o_found := false;
         l_found := true;
+        o_curr_lpt_opn_seq_id := o_next_id;
         exit;
       end if;
       
@@ -385,6 +395,7 @@ as
          and not (rec.logpoint = i_logpoint
                   and rec.operation = i_operation)
       then
+        dbms_output.put_line('        l_recommend_out_for_next = true and not equal lptopn');
         o_next_id := rec.id;
         o_next_sequence := rec.sequence;
         o_found := true;
@@ -395,14 +406,17 @@ as
       if rec.logpoint = i_logpoint
          and rec.operation = i_operation
       then
+        dbms_output.put_line('        equal lptopn');
         l_found := true;
         l_recommend_out_for_next := true;
         o_found := false;
+        o_curr_lpt_opn_seq_id := rec.id;
       end if;
     end loop;
     
     if not l_found
     then
+      dbms_output.put_line('        l_found = true');
       insert_lpt_opn_sequence
       (
         i_logpoint,
@@ -410,23 +424,72 @@ as
         o_next_id,
         o_next_sequence
       );
+      o_curr_lpt_opn_seq_id := o_next_id;
     end if;
     
-    if o_found = true
-    then
-      l_found_num := 1;
-    else
-      l_found_num := 0;
-    end if;
-    
-    insert into gtt_monitor2
-    values (i_logpoint, i_operation, o_next_sequence, l_found_num);
+    dbms_output.put_line('        finished lpt ' || i_logpoint || ' opn ' || i_operation || ' id ' || o_curr_lpt_opn_seq_id);
     
     commit;
   end find_insert_lpt_opn_sequence;
   
   /****************************************************************************/
+  procedure insert_lpt_equip_data_out
+  (
+    i_grouping_id in number,
+    i_lpt_opn_seq_id in raw,
+    i_lot in varchar2,
+    i_logpoint in number,
+    i_operation in number,
+    i_transaction in varchar2,
+    i_tran_dttm in date,
+    i_login_dttm in date,
+    i_equipment in varchar2,
+    i_sequence in number
+  )
+  as
+    lc_id constant raw(16) := sys_guid;
+  begin
+    dbms_output.put_line('    inserting out data');
+    dbms_output.put_line('      lpt_opn_seq_id ' || i_lpt_opn_seq_id);
+    
+    insert into gtt_lpt_equip_data_out
+    (
+      id,
+      grouping_id,
+      lpt_opn_seq_id,
+      lot,
+      logpoint,
+      operation,
+      transaction,
+      tran_dttm,
+      login_dttm,
+      equipment,
+      sequence
+    )
+    values
+    (
+      lc_id,
+      i_grouping_id,
+      i_lpt_opn_seq_id,
+      i_lot,
+      i_logpoint,
+      i_operation,
+      i_transaction,
+      i_tran_dttm,
+      i_login_dttm,
+      i_equipment,
+      i_sequence
+    );
+    
+    commit;
+    
+  end insert_lpt_equip_data_out;
+  
+  /****************************************************************************/
   procedure merge_lpt_opn_sequence
+  (
+    i_grouping_id in number
+  )
   as
     cursor curr_lpt_equip_data is
     select *
@@ -438,25 +501,49 @@ as
     l_found boolean := false;
     l_prev_logpoint number;
     l_prev_operation number;
+    l_curr_lpt_opn_seq_id raw(16);
   begin
     
     for rec in curr_lpt_equip_data
     loop
-      if not (l_prev_logpoint = rec.logpoint
+      dbms_output.put_line('  lpt ' || rec.logpoint || ' opn ' || rec.operation);
+      
+      if (l_prev_logpoint is null
+         and l_prev_operation is null)
+         or
+         not (l_prev_logpoint = rec.logpoint
               and l_prev_operation = rec.operation)
       then
+        dbms_output.put_line('    inserting...');
         find_insert_lpt_opn_sequence
         (
           rec.logpoint,
           rec.operation,
           l_next_id,
           l_next_sequence,
-          l_found
+          l_found,
+          l_curr_lpt_opn_seq_id
         );
+      else
+        dbms_output.put_line('    skipping...');
       end if;
       
       l_prev_logpoint := rec.logpoint;
       l_prev_operation := rec.operation;
+      
+      insert_lpt_equip_data_out
+      (
+        i_grouping_id,
+        l_curr_lpt_opn_seq_id,
+        rec.lot,
+        rec.logpoint,
+        rec.operation,
+        rec.transaction,
+        rec.tran_dttm,
+        rec.login_dttm,
+        rec.equipment,
+        rec.sequence
+      );
     end loop;
   end merge_lpt_opn_sequence;
   
@@ -467,14 +554,100 @@ as
     select *
       from genealogy_data_groups
     order by grouping_id, sequence;
+    
+    l_lpt_equip_data_rec lpt_equip_data%rowtype;
+    l_grouping_id number;
   begin
     for rec in glg_data_groups
     loop
-      dbms_output.put_line('checking lot ' || rec.dst_lot);
+      dbms_output.put_line('lot ' || rec.dst_lot);
+      l_grouping_id := rec.grouping_id;
       insert_gtt_lpt_equip_data(rec.dst_lot);
-      merge_lpt_opn_sequence;
+      merge_lpt_opn_sequence(l_grouping_id);
     end loop;
   end determine_lpt_opn_sequence;
+  
+  /****************************************************************************/
+  function get_prev_lpt_opn_seq_id
+  (
+    i_curr_lpt_opn_seq_id in raw
+  )
+  return raw 
+  as
+    r_retval raw(16);
+  begin
+  
+    begin
+      select id
+        into r_retval
+        from gtt_lpt_opn_sequence
+       where sequence = (select max(sequence)
+                           from gtt_lpt_opn_sequence
+                          where sequence < (select sequence
+                                              from gtt_lpt_opn_sequence
+                                             where id = i_curr_lpt_opn_seq_id));
+    exception
+      when no_data_found
+      then null;
+    end;
+    
+    return r_retval;
+  end get_prev_lpt_opn_seq_id;
+  
+  /****************************************************************************/
+  procedure insert_lpt_equip_parents
+  (
+    i_lpt_equip_id in raw,
+    i_prev_lpt_opn_seq_id in raw
+  )
+  as
+  begin
+    insert into gtt_lpt_equip_parents
+    with
+    src_lots as
+    (
+      select distinct src_lot, a.grouping_id
+        from gtt_lpt_equip_data_out a,
+             genealogy_data_groups b
+       where a.lot = b.dst_lot
+         and a.grouping_id = b.grouping_id
+         and a.id = i_lpt_equip_id
+      union
+      select lot, grouping_id
+        from gtt_lpt_equip_data_out
+       where id = i_lpt_equip_id
+    )
+    select distinct i_lpt_equip_id, a.id
+      from gtt_lpt_equip_data_out a,
+           src_lots b
+     where a.lot = b.src_lot
+       and a.grouping_id = b.grouping_id
+       and a.lpt_opn_seq_id = i_prev_lpt_opn_seq_id
+    ;
+    
+    commit;
+    
+  end insert_lpt_equip_parents;
+  
+  /****************************************************************************/
+  procedure determine_parents
+  as
+    cursor lpt_equip_data_out is
+    select *
+      from gtt_lpt_equip_data_out
+    order by grouping_id, sequence desc;
+    
+    l_prev_lpt_opn_seq_id raw(16);
+  begin
+    dbms_output.put_line('determining parents...');
+    for rec in lpt_equip_data_out
+    loop
+      dbms_output.put_line('lot ' || rec.lot || ' lpt ' || rec.logpoint || ' opn ' || rec.operation || ' curr_lpt_opn_seq_id ' || rec.lpt_opn_seq_id);
+      l_prev_lpt_opn_seq_id := get_prev_lpt_opn_seq_id(rec.lpt_opn_seq_id);
+      dbms_output.put_line('  prev_lpt_opn_seq_id ' || l_prev_lpt_opn_seq_id);
+      insert_lpt_equip_parents(rec.id, l_prev_lpt_opn_seq_id);
+    end loop;
+  end determine_parents;
   
   /****************************************************************************/
   procedure generate
@@ -487,8 +660,7 @@ as
     
     find_glg_groups(i_lot_to_glg);
     determine_lpt_opn_sequence;
-    
-    --determine_parents;
+    determine_parents;
     --prepare_output;
     
   end generate;
