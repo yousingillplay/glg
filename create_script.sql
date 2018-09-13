@@ -20,7 +20,29 @@ create table genealogy_data
   dst_lot varchar2(7),
   dst_event varchar2(20),
   tran_dttm date,
-  sequence number
+  sequence number,
+  grouping_id number
+);
+
+create table adjacent_lot_data
+(
+  lot_under_inv varchar2(7),
+  adjacent_lot varchar2(7),
+  equipment varchar2(20),
+  start_dttm date,
+  login_dttm date,
+  adj_login_dttm date,
+  current_logpoint varchar2(10),
+  last_logpoint varchar2(10),
+  last_act_dttm date
+);
+
+create table equip_commonality_data
+(
+  equipment varchar2(20),
+  logpoint number,
+  operation number,
+  commonality_percent number
 );
 
 create table lpt_equip_genealogy
@@ -90,6 +112,16 @@ create global temporary table gtt_lpt_equip_data_out
   equipment varchar2(20),
   sequence number,
   parent_id raw(16)
+)
+on commit preserve rows;
+
+create global temporary table gtt_stage_parents
+(
+  lot varchar2(7),
+  parent_lot varchar2(7),
+  found_in_logpoint number,
+  found_in_opn number,
+  complete_flag number(1)
 )
 on commit preserve rows;
 
